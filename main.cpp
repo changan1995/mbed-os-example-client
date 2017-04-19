@@ -26,6 +26,8 @@
 
 #include "mbed.h"
 
+    #include "FXOS8700Q.h"
+
 // easy-connect compliancy, it has 2 sets of wifi pins we have only one
 #define MBED_CONF_APP_ESP8266_TX MBED_CONF_APP_WIFI_TX
 #define MBED_CONF_APP_ESP8266_RX MBED_CONF_APP_WIFI_RX
@@ -205,6 +207,34 @@ private:
 };
 
 /*
+initiate the accelerometer resource
+*/
+class Accelerometer{
+public:
+    AccelerometerResource():{
+        // create ObjectID with metadata tag of '6666', which is 'digital output'
+        acc_object = M2MInterfaceFactory::create_object("6666");
+        M2MObjectInstance* acc_inst = acc_object->create_object_instance();
+        
+        M2MResource* acc_res = acc_inst_>create_dynamic_resource("1211","accelerometer",
+            M2MResourceInstance::STRING, true);
+        //this should be like the presses counted in ButtonResource
+        // whether it is string & whether false means undreadable?
+        acc_res->set_operation(M2MBase:GET_ALLOWED);
+        //set intial value
+        acc_res->set_value((unit8_t*)"0",1)
+    }
+
+    ~AccelerometerResource(){
+    }
+    
+    M2MObject* get_object(){
+        return acc_object;
+    }
+        
+}
+
+/*
  * The button contains one property (click count).
  * When `handle_button_click` is executed, the counter updates.
  */
@@ -231,16 +261,71 @@ public:
         return btn_object;
     }
 
+private:
+    M2MObject* acc_object;
+    uint16_t counter;
+};
     /*
      * When you press the button, we read the current value of the click counter
      * from mbed Device Connector, then up the value with one.
      */
     void handle_button_click() {
-        if (mbed_client.register_successful()) {
+    if (mbed_client.register_successful()) {
             M2MObjectInstance* inst = btn_object->object_instance();
             M2MResource* res = inst->resource("5501");
+            //adding the accelerometer to the handle_button_click
+            M2MObjectInstance* inst_acc = acc_object->object_instance();
+            M2MResource* res_acc =inst->resource("1211");
+            
+    /*
+    adding accle&magnet printing in mouseclick
+    */
 
-            // up counter
+    Serial pc(USBTX, USBRX);
+    I2C i2c(PTE25, PTE24);
+    //FXOS8700Q fxos(i2c, FXOS8700CQ_SLAVE_ADDR1);
+    FXOS8700QAccelerometer acc(i2c, FXOS8700CQ_SLAVE_ADDR1);    // Configured for the FRDM-K64F with onboard sensors
+    FXOS8700QMagnetometer mag(i2c, FXOS8700CQ_SLAVE_ADDR1);
+    //FXOS8700QAccelerometer acc(i2c, FXOS8700CQ_SLAVE_ADDR0);    // Configured for use with the FRDM-MULTI shield
+    //FXOS8700QMagnetometer mag(i2c, FXOS8700CQ_SLAVE_ADDR0);
+    
+    motion_data_units_t acc_data, mag_data;
+    motion_data_counts_t acc_raw, mag_raw;
+    float faX, faY, faZ, fmX, fmY, fmZ, tmp_float;
+    int16_t raX, raY, raZ, rmX, rmY, rmZ, tmp_int;
+
+    //enable
+    acc.enable()
+    mag.enable()
+
+     // counts based results
+        acc.getAxis(acc_raw);
+        mag.getAxis(mag_raw);
+        printf("ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", acc_raw.x, acc_raw.y, acc_raw.z, mag_raw.x, mag_raw.y, mag_raw.z);
+        acc.getX(raX);
+        acc.getY(raY);
+        acc.getZ(raZ);
+        mag.getX(rmX);
+        mag.getY(rmY);
+        mag.getZ(rmZ);
+        printf("ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", raX, raY, raZ, rmX, rmY, rmZ);
+        printf("ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", acc.getX(tmp_int), acc.getY(tmp_int), acc.getZ(tmp_int), mag.getX(tmp_int), mag.getY(tmp_int), mag.getZ(tmp_int));
+        // unit based results
+        acc.getAxis(acc_data);
+        mag.getAxis(mag_data);
+        printf("ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", acc_data.x, acc_data.y, acc_data.z, mag_data.x, mag_data.y, mag_data.z);
+        acc.getX(faX);
+        acc.getY(faY);
+        acc.getZ(faZ);
+        mag.getX(fmX);
+        mag.getY(fmY);
+        mag.getZ(fmZ);
+        printf("ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", faX, faY, faZ, fmX, fmY, fmZ);
+        printf("ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", acc.getX(tmp_float), acc.getY(tmp_float), acc.getZ(tmp_float), mag.getX(tmp_float), mag.getY(tmp_float), mag.getZ(tmp_float));
+        puts("");
+        wait(5.0f);
+        
+        // up counter
             counter++;
     #ifdef TARGET_K64F
             printf("handle_button_click, new value of counter is %d\n", counter);
@@ -248,9 +333,11 @@ public:
             printf("simulate button_click, new value of counter is %d\n", counter);
     #endif
             // serialize the value of counter as a string, and tell connector
-            char buffer[20];
+            char buffer[20];buffer_acc[255];
             int size = sprintf(buffer,"%d",counter);
+            int size_acc = sprintf(buffer_acc,"ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", raX, raY, raZ, rmX, rmY, rmZ);
             res->set_value((uint8_t*)buffer, size);
+            res_acc->set_value((unit8_t*)buffer_acc,size_acc);
         } else {
             printf("simulate button_click, device not registered\n");
         }
