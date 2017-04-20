@@ -25,8 +25,15 @@
 #include "security.h"
 
 #include "mbed.h"
-
-    #include "FXOS8700Q.h"
+//declearation of accelerometer
+#include "FXOS8700Q.h"
+Serial pc(USBTX, USBRX);
+I2C i2c(PTE25, PTE24);
+//FXOS8700Q fxos(i2c, FXOS8700CQ_SLAVE_ADDR1);
+FXOS8700QAccelerometer acc(i2c, FXOS8700CQ_SLAVE_ADDR1);    // Configured for the FRDM-K64F with onboard sensors
+FXOS8700QMagnetometer mag(i2c, FXOS8700CQ_SLAVE_ADDR1);
+//FXOS8700QAccelerometer acc(i2c, FXOS8700CQ_SLAVE_ADDR0);    // Configured for use with the FRDM-MULTI shield
+//FXOS8700QMagnetometer mag(i2c, FXOS8700CQ_SLAVE_ADDR0);
 
 // easy-connect compliancy, it has 2 sets of wifi pins we have only one
 #define MBED_CONF_APP_ESP8266_TX MBED_CONF_APP_WIFI_TX
@@ -206,33 +213,90 @@ private:
     }
 };
 
+
 /*
-initiate the accelerometer resource
-*/
-class Accelerometer{
+/*
+ * The button contains one property (click count).
+ * When `handle_button_click` is executed, the counter updates.
+ */
+class AccelerometerResource {
 public:
-    AccelerometerResource():{
-        // create ObjectID with metadata tag of '6666', which is 'digital output'
+    AccelerometerResource() {
+        // create ObjectID with metadata tag of '6666', which is 'digital input'
         acc_object = M2MInterfaceFactory::create_object("6666");
         M2MObjectInstance* acc_inst = acc_object->create_object_instance();
-        
-        M2MResource* acc_res = acc_inst_>create_dynamic_resource("1211","accelerometer",
-            M2MResourceInstance::STRING, true);
-        //this should be like the presses counted in ButtonResource
-        // whether it is string & whether false means undreadable?
-        acc_res->set_operation(M2MBase:GET_ALLOWED);
-        //set intial value
-        acc_res->set_value((unit8_t*)"0",1)
+        // create resource with ID '5501', which is digital input counter
+        M2MResource* acc_res = acc_inst->create_dynamic_resource("5501", "Accelerometer",
+            M2MResourceInstance::STRING, true /* observable */);
+        // we can read this value
+        acc_res->set_operation(M2MBase::GET_ALLOWED);
+        // set initial value (all values in mbed Client are buffers)
+        // to be able to read this data easily in the Connector console, we'll use a string
+        acc_res->set_value((uint8_t*)"0", 1);
     }
 
-    ~AccelerometerResource(){
+    ~AccelerometerResource() {
     }
-    
-    M2MObject* get_object(){
+
+    M2MObject* get_object() {
         return acc_object;
     }
-        
-}
+
+    /*
+     * When you press the button, we read the current value of the click counter
+     * from mbed Device Connector, then up the value with one.*/
+         void handle_button_click2() {
+        if (mbed_client.register_successful()) {
+            M2MObjectInstance* inst = acc_object->object_instance();
+            M2MResource* res = inst->resource("5501");
+
+            // read accelerometer data
+              // counts based results
+        acc.getAxis(acc_raw);
+        mag.getAxis(mag_raw);
+        printf("ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", acc_raw.x, acc_raw.y, acc_raw.z, mag_raw.x, mag_raw.y, mag_raw.z);
+        acc.getX(raX);
+        acc.getY(raY);
+        acc.getZ(raZ);
+        mag.getX(rmX);
+        mag.getY(rmY);
+        mag.getZ(rmZ);
+        printf("ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", raX, raY, raZ, rmX, rmY, rmZ);
+        printf("ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", acc.getX(tmp_int), acc.getY(tmp_int), acc.getZ(tmp_int), mag.getX(tmp_int), mag.getY(tmp_int), mag.getZ(tmp_int));
+        // unit based results
+        acc.getAxis(acc_data);
+        mag.getAxis(mag_data);
+        printf("ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", acc_data.x, acc_data.y, acc_data.z, mag_data.x, mag_data.y, mag_data.z);
+        acc.getX(faX);
+        acc.getY(faY);
+        acc.getZ(faZ);
+        mag.getX(fmX);
+        mag.getY(fmY);
+        mag.getZ(fmZ);
+        printf("ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", faX, faY, faZ, fmX, fmY, fmZ);
+        printf("ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", acc.getX(tmp_float), acc.getY(tmp_float), acc.getZ(tmp_float), mag.getX(tmp_float), mag.getY(tmp_float), mag.getZ(tmp_float));
+        puts("");
+        wait(5.0f);
+            
+           // serialize the value of counter as a string, and tell connector
+            char buffer2[255];
+            int size = sprintf(buffer2,"ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", acc_data.x, acc_data.y, acc_data.z, mag_data.x, mag_data.y, mag_data.z);
+            res->set_value((uint8_t*)buffer2, size);
+        } else {
+            printf("simulate button_click, device not registered\n");
+        }
+    }
+
+private:
+    M2MObject* acc_object;
+    
+//declearation of variables of accelerometer
+    motion_data_units_t acc_data, mag_data;
+    motion_data_counts_t acc_raw, mag_raw;
+    float faX, faY, faZ, fmX, fmY, fmZ, tmp_float;
+    int16_t raX, raY, raZ, rmX, rmY, rmZ, tmp_int;
+
+};
 
 /*
  * The button contains one property (click count).
@@ -261,71 +325,16 @@ public:
         return btn_object;
     }
 
-private:
-    M2MObject* acc_object;
-    uint16_t counter;
-};
     /*
      * When you press the button, we read the current value of the click counter
      * from mbed Device Connector, then up the value with one.
      */
     void handle_button_click() {
-    if (mbed_client.register_successful()) {
+        if (mbed_client.register_successful()) {
             M2MObjectInstance* inst = btn_object->object_instance();
             M2MResource* res = inst->resource("5501");
-            //adding the accelerometer to the handle_button_click
-            M2MObjectInstance* inst_acc = acc_object->object_instance();
-            M2MResource* res_acc =inst->resource("1211");
-            
-    /*
-    adding accle&magnet printing in mouseclick
-    */
 
-    Serial pc(USBTX, USBRX);
-    I2C i2c(PTE25, PTE24);
-    //FXOS8700Q fxos(i2c, FXOS8700CQ_SLAVE_ADDR1);
-    FXOS8700QAccelerometer acc(i2c, FXOS8700CQ_SLAVE_ADDR1);    // Configured for the FRDM-K64F with onboard sensors
-    FXOS8700QMagnetometer mag(i2c, FXOS8700CQ_SLAVE_ADDR1);
-    //FXOS8700QAccelerometer acc(i2c, FXOS8700CQ_SLAVE_ADDR0);    // Configured for use with the FRDM-MULTI shield
-    //FXOS8700QMagnetometer mag(i2c, FXOS8700CQ_SLAVE_ADDR0);
-    
-    motion_data_units_t acc_data, mag_data;
-    motion_data_counts_t acc_raw, mag_raw;
-    float faX, faY, faZ, fmX, fmY, fmZ, tmp_float;
-    int16_t raX, raY, raZ, rmX, rmY, rmZ, tmp_int;
-
-    //enable
-    acc.enable()
-    mag.enable()
-
-     // counts based results
-        acc.getAxis(acc_raw);
-        mag.getAxis(mag_raw);
-        printf("ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", acc_raw.x, acc_raw.y, acc_raw.z, mag_raw.x, mag_raw.y, mag_raw.z);
-        acc.getX(raX);
-        acc.getY(raY);
-        acc.getZ(raZ);
-        mag.getX(rmX);
-        mag.getY(rmY);
-        mag.getZ(rmZ);
-        printf("ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", raX, raY, raZ, rmX, rmY, rmZ);
-        printf("ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", acc.getX(tmp_int), acc.getY(tmp_int), acc.getZ(tmp_int), mag.getX(tmp_int), mag.getY(tmp_int), mag.getZ(tmp_int));
-        // unit based results
-        acc.getAxis(acc_data);
-        mag.getAxis(mag_data);
-        printf("ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", acc_data.x, acc_data.y, acc_data.z, mag_data.x, mag_data.y, mag_data.z);
-        acc.getX(faX);
-        acc.getY(faY);
-        acc.getZ(faZ);
-        mag.getX(fmX);
-        mag.getY(fmY);
-        mag.getZ(fmZ);
-        printf("ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", faX, faY, faZ, fmX, fmY, fmZ);
-        printf("ACC: X=%1.4ff Y=%1.4ff Z=%1.4ff \t MAG: X=%4.1ff Y=%4.1ff Z=%4.1ff\r\n", acc.getX(tmp_float), acc.getY(tmp_float), acc.getZ(tmp_float), mag.getX(tmp_float), mag.getY(tmp_float), mag.getZ(tmp_float));
-        puts("");
-        wait(5.0f);
-        
-        // up counter
+            // up counter
             counter++;
     #ifdef TARGET_K64F
             printf("handle_button_click, new value of counter is %d\n", counter);
@@ -333,11 +342,9 @@ private:
             printf("simulate button_click, new value of counter is %d\n", counter);
     #endif
             // serialize the value of counter as a string, and tell connector
-            char buffer[20];buffer_acc[255];
+            char buffer[20];
             int size = sprintf(buffer,"%d",counter);
-            int size_acc = sprintf(buffer_acc,"ACC: X=%06dd Y=%06dd Z=%06dd \t MAG: X=%06dd Y=%06dd Z=%06dd\r\n", raX, raY, raZ, rmX, rmY, rmZ);
             res->set_value((uint8_t*)buffer, size);
-            res_acc->set_value((unit8_t*)buffer_acc,size_acc);
         } else {
             printf("simulate button_click, device not registered\n");
         }
@@ -415,9 +422,13 @@ void button_clicked() {
 
 // Entry point to the program
 int main() {
-
-    unsigned int seed;
+   unsigned int seed;
     size_t len;
+    
+    acc.enable();
+    mag.enable();
+
+ 
 
 #ifdef MBEDTLS_ENTROPY_HARDWARE_ALT
     // Used to randomize source port
@@ -434,75 +445,65 @@ int main() {
 #error "This hardware does not have entropy, endpoint will not register to Connector.\
 You need to enable NULL ENTROPY for your application, but if this configuration change is made then no security is offered by mbed TLS.\
 Add MBEDTLS_NO_DEFAULT_ENTROPY_SOURCES and MBEDTLS_TEST_NULL_ENTROPY in mbed_app.json macros to register your endpoint."
-
 #endif
-
     srand(seed);
     red_led = LED_OFF;
     blue_led = LED_OFF;
-
     status_ticker.attach_us(blinky, 250000);
     // Keep track of the main thread
     mainThread = osThreadGetId();
-
     printf("\nStarting mbed Client example in ");
 #if defined (MESH) || (MBED_CONF_LWIP_IPV6_ENABLED==true)
     printf("IPv6 mode\n");
 #else
     printf("IPv4 mode\n");
 #endif
-
     mbed_trace_init();
-
     NetworkInterface* network = easy_connect(true);
     if(network == NULL) {
         printf("\nConnection to Network Failed - exiting application...\n");
         return -1;
     }
-
     // we create our button and LED resources
     ButtonResource button_resource;
     LedResource led_resource;
     BigPayloadResource big_payload_resource;
+    AccelerometerResource acc_resource;
 
 #ifdef TARGET_K64F
     // On press of SW3 button on K64F board, example application
     // will call unregister API towards mbed Device Connector
     //unreg_button.fall(&mbed_client,&MbedClient::test_unregister);
     unreg_button.fall(&unregister);
-
     // Observation Button (SW2) press will send update of endpoint resource values to connector
     obs_button.fall(&button_clicked);
 #else
     // Send update of endpoint resource values to connector every 15 seconds periodically
     timer.attach(&button_clicked, 15.0);
 #endif
-
     // Create endpoint interface to manage register and unregister
     mbed_client.create_interface(MBED_SERVER_ADDRESS, network);
-
     // Create Objects of varying types, see simpleclient.h for more details on implementation.
     M2MSecurity* register_object = mbed_client.create_register_object(); // server object specifying connector info
     M2MDevice*   device_object   = mbed_client.create_device_object();   // device resources object
-
     // Create list of Objects to register
     M2MObjectList object_list;
-
     // Add objects to list
     object_list.push_back(device_object);
     object_list.push_back(button_resource.get_object());
     object_list.push_back(led_resource.get_object());
     object_list.push_back(big_payload_resource.get_object());
-
+    //add accelerometer
+    object_list.push_back(acc_resource.get_object());
+    
     // Set endpoint registration object
     mbed_client.set_register_object(register_object);
-
     // Register with mbed Device Connector
     mbed_client.test_register(register_object, object_list);
     registered = true;
-
     while (true) {
-        updates.wait(25000);
+        updates.wait(10000);
+        acc_resource.handle_button_click2();
         if(registered) {
             if(!clicked) {
                 mbed_client.test_update_register();
@@ -513,9 +514,9 @@ Add MBEDTLS_NO_DEFAULT_ENTROPY_SOURCES and MBEDTLS_TEST_NULL_ENTROPY in mbed_app
         if(clicked) {
             clicked = false;
             button_resource.handle_button_click();
+
         }
     }
-
     mbed_client.test_unregister();
     status_ticker.detach();
 }
